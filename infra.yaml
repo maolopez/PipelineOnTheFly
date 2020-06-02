@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs
+Description: Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs, 2 security groups
 
 Parameters:
 
@@ -17,9 +17,19 @@ Parameters:
     Type: String
     MinLength: 9
     MaxLength: 18
-    Default: "0.0.0.0/0"
+    Default: "99.241.167.11/32"
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     ConstraintDescription: "Must be a valid IP CIDR range of the form x.x.x.x/x."
+
+  InstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+    - t1.micro
+    - t2.nano
+    - t2.micro
+    ConstraintDescription: must be a valid EC2 Free Tier instance type.
 
 Mappings:
   SubnetConfig:
@@ -29,6 +39,18 @@ Mappings:
       CIDR: 10.0.0.0/24
     Private:
       CIDR: 10.0.1.0/24
+
+  AWSInstanceType2Arch:
+    t1.micro:
+      Arch: HVM64
+    t2.nano:
+      Arch: HVM64
+    t2.micro:
+      Arch: HVM64
+
+  AWSRegionArch2AMI:
+    us-east-1:
+      HVM64: ami-0080e4c5bc078760e      
 
 Resources:
 
@@ -171,7 +193,7 @@ Resources:
       NetworkAclId: !Ref myPublicNetworkAcl
       SubnetId: !Ref myPublicSubnet
 
-  myPublicNetworkAclEntry80:
+  myInPublicNetworkAclEntry80:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -185,7 +207,7 @@ Resources:
         From: 80
         To: 80
 
-  myPublicNetworkAclEntry22:
+  myInPublicNetworkAclEntry443:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -196,10 +218,10 @@ Resources:
       Egress: 'false'
       CidrBlock: 0.0.0.0/0
       PortRange:
-        From: 22
-        To: 22
+        From: 443
+        To: 443      
 
-  myPublicNetworkAclEntryEphemeralPorts:
+  myInPublicNetworkAclEntry22:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -207,11 +229,39 @@ Resources:
       RuleNumber: '102'
       Protocol: "6"
       RuleAction: allow
-      Egress: 'true'
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 22
+        To: 22
+
+  myInPublicNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '103'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
       CidrBlock: 0.0.0.0/0
       PortRange:
         From: 1024
         To: 65535
+
+  myoutPublicNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 0
+        To: 65535        
 
   myPrivateNetworkAcl:
     Type: AWS::EC2::NetworkAcl
@@ -220,7 +270,7 @@ Resources:
         Ref: myVPC
       Tags:
       - Key: name
-        Value: myPipeline                
+        Value: myPipeline               
 
   myPrivateSubnetNetworkAclAssociation:
     Type: AWS::EC2::SubnetNetworkAclAssociation
@@ -228,7 +278,41 @@ Resources:
       NetworkAclId: !Ref myPrivateNetworkAcl
       SubnetId: !Ref myPrivateSubnet
 
-  myPrivateNetworkAclEntry22:
+  myInPrivateNetworkAclEntry22:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '101'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - Private
+        - CIDR
+      PortRange:
+        From: 22
+        To: 22
+
+  myInPrivateNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '102'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - Private
+        - CIDR
+      PortRange:
+        From: 1024
+        To: 65535 
+
+  myoutPrivateNetworkAclEntryEphemeralPorts:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -236,28 +320,146 @@ Resources:
       RuleNumber: '103'
       Protocol: "6"
       RuleAction: allow
-      Egress: 'false'
-      CidrBlock: !FindInMap
-        - SubnetConfig
-        - VPC
-        - CIDR
-      PortRange:
-        From: 22
-        To: 22
-
-  myPrivateNetworkAclEntryEphemeralPorts:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId:
-        Ref: myPrivateNetworkAcl
-      RuleNumber: '104'
-      Protocol: "6"
-      RuleAction: allow
       Egress: 'true'
       CidrBlock: !FindInMap
         - SubnetConfig
-        - VPC
+        - Private
         - CIDR
       PortRange:
-        From: 1024
-        To: 65535
+        From: 0
+        To: 65535              
+
+  PublicSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH/HTTP/HTTPS access
+      GroupName: !Sub '${pEnvironment}_PublicInstance_${AWS::Region}_${AWS::AccountId}'
+      VpcId:
+        Ref: myVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp:
+          Ref: SSHLocation
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: name
+        Value: myPipeline 
+
+  PrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH/HTTP/HTTPS access
+      GroupName: !Sub '${pEnvironment}_PrivateInstance_${AWS::Region}_${AWS::AccountId}'
+      VpcId:
+        Ref: myVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  PublicEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+          - ""
+          - - "#!/bin/bash\n"
+            - "yum update -y aws-cfn-bootstrap"
+            - "/opt/aws/bin/cfn-init"
+            - " --stack "
+            - Ref: AWS::StackName
+            - " --resource PublicEC2Instance "
+            - " --region "
+            - Ref: AWS::Region
+            - "\n"
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionArch2AMI
+        - Ref: AWS::Region
+        - Fn::FindInMap:
+          - AWSInstanceType2Arch
+          - Ref: InstanceType
+          - Arch
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "true"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: "PublicSecurityGroup"
+        SubnetId: 
+          Ref: "myPublicSubnet"
+
+  PrivateEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+          - ""
+          - - "#!/bin/bash\n"
+            - "yum update -y aws-cfn-bootstrap"
+            - "/opt/aws/bin/cfn-init"
+            - " --stack "
+            - "useradd -c ansible -d /home/ansible -s /bin/bash ansible"
+            - "passwd -d ansible"
+            - "usermod -aG wheel ansible"
+            - "su - ansible"
+            - "yum install -y epel-release"
+            - "yum install -y ansible"
+            - "yum install -y python36 python36-pip"
+            - "yum install -y git"
+            - "mkdir -p /opt/ansible/inventory"
+            - "chmod -R 755 /opt/ansible"
+            - "chown -R ansible:ansible /opt/ansible"
+            - "git clone https://github.com/ansible/ansible"
+            - Ref: AWS::StackName
+            - " --resource AnsibleEC2Instance "
+            - " --region "
+            - Ref: AWS::Region
+            - "\n"
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionArch2AMI
+        - Ref: AWS::Region
+        - Fn::FindInMap:
+          - AWSInstanceType2Arch
+          - Ref: InstanceType
+          - Arch
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "false"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: "PrivateSecurityGroup"
+        SubnetId: 
+          Ref: "myPrivateSubnet"                 
