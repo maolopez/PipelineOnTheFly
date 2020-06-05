@@ -1,7 +1,25 @@
+---
+# Copyright 2019
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs, 2 security groups
-
+Description: "Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs, 2 security groups
+and 2 instances, one of the instances in the private subnet will connecto to a NAT.
+This template is created for the us-east-1 AZ. The private Instance contact yum repositories through NAT"
+# To create/add te SSH key before running this cloudformation template.
 Parameters:
 
   pEnvironment:
@@ -39,16 +57,7 @@ Mappings:
       CIDR: 10.0.0.0/24
     Private:
       CIDR: 10.0.1.0/24
-  EndpointConfig:
-    amazonawstos3a:
-      CIDR: 54.231.0.0/17
-    amazonawstos3b:
-      CIDR: 52.216.0.0/15
-    amazonawstos3c:
-      CIDR: 3.5.16.0/21
-    amazonawstos3d:
-      CIDR: 3.5.0.0/20 
-
+#
   AWSInstanceType2Arch:
     t1.micro:
       Arch: HVM64
@@ -59,7 +68,7 @@ Mappings:
 
   AWSRegionArch2AMI:
     us-east-1:
-      HVM64: ami-0080e4c5bc078760e      
+      HVM64: ami-01d025118d8e760db      
 
 Resources:
 
@@ -69,7 +78,8 @@ Resources:
       GroupName: !Sub '${pEnvironment}_Admin_${AWS::Region}_${AWS::AccountId}'
       ManagedPolicyArns:  
         - arn:aws:iam::aws:policy/AdministratorAccess
-  
+        
+# The below role will be linked to the MyPrivateInstanceProfile   
   PowerUserIAmRole:
     Type: AWS::IAM::Role
     Properties:
@@ -178,6 +188,16 @@ Resources:
       Tags:
       - Key: name
         Value: myPipeline
+
+  myPrivateRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+       RouteTableId:
+         Ref: myPrivateRouteTable
+       DestinationCidrBlock: "0.0.0.0/0"
+       NatGatewayId:
+         Ref: myNatGateway
      
   myPrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -187,23 +207,24 @@ Resources:
       RouteTableId:
         Ref: myPrivateRouteTable
 
-  S3VPCEndpoint:
-    Type: AWS::EC2::VPCEndpoint
+  myNatGateway:
+    Type: AWS::EC2::NatGateway
     Properties:
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          Effect: 'Allow'
-          Principal: '*'
-          Action:
-            - s3:*
-          Resource: 
-            - arn:aws:s3:::repo.${AWS::Region}.amazonaws.com
-            - arn:aws:s3:::repo.${AWS::Region}.amazonaws.com/*
-      RouteTableIds:
-        - !Ref myPrivateRouteTable
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
-      VpcId: !Ref myVPC       
+      AllocationId:
+        Fn::GetAtt:
+        - myEIP
+        - AllocationId
+      SubnetId:
+        Ref: myPublicSubnet
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  myEIP:
+    DependsOn: AttachGateway
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: myVPC            
 
   myPublicNetworkAcl:
     Type: AWS::EC2::NetworkAcl
@@ -310,7 +331,7 @@ Resources:
     Properties:
       NetworkAclId:
         Ref: myPrivateNetworkAcl
-      RuleNumber: '101'
+      RuleNumber: '100'
       Protocol: "6"
       RuleAction: allow
       Egress: 'false'
@@ -327,19 +348,32 @@ Resources:
     Properties:
       NetworkAclId:
         Ref: myPrivateNetworkAcl
-      RuleNumber: '102'
+      RuleNumber: '101'
       Protocol: "6"
       RuleAction: allow
       Egress: 'false'
-      CidrBlock: !FindInMap
-        - SubnetConfig
-        - VPC
-        - CIDR
+      CidrBlock: 0.0.0.0/0
       PortRange:
         From: 1024
         To: 65535
 
-  myInPrivateNetworkAclEntryEphemeralPorts2s3a:
+# This NACL Inbound rule below allows yum updates for private instances
+
+  myInPrivateNetworkAclEntry80:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '102'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 80
+        To: 80
+
+  myInPrivateNetworkAclEntry443:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -348,66 +382,12 @@ Resources:
       Protocol: "6"
       RuleAction: allow
       Egress: 'false'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3a
-        - CIDR
+      CidrBlock: 0.0.0.0/0
       PortRange:
-        From: 0
-        To: 65535
+        From: 443
+        To: 443 
 
-  myInPrivateNetworkAclEntryEphemeralPorts2s3b:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId:
-        Ref: myPrivateNetworkAcl
-      RuleNumber: '104'
-      Protocol: "6"
-      RuleAction: allow
-      Egress: 'false'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3b
-        - CIDR
-      PortRange:
-        From: 0
-        To: 65535
-
-  myInPrivateNetworkAclEntryEphemeralPorts2s3c:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId:
-        Ref: myPrivateNetworkAcl
-      RuleNumber: '105'
-      Protocol: "6"
-      RuleAction: allow
-      Egress: 'false'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3c
-        - CIDR
-      PortRange:
-        From: 0
-        To: 65535
-
-  myInPrivateNetworkAclEntryEphemeralPorts2s3d:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId:
-        Ref: myPrivateNetworkAcl
-      RuleNumber: '106'
-      Protocol: "6"
-      RuleAction: allow
-      Egress: 'false'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3d
-        - CIDR
-      PortRange:
-        From: 0
-        To: 65535
-
-  myoutPrivateNetworkAclEntryEphemeralPorts:
+  myoutPrivateNetworkAclEntry80:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -416,15 +396,12 @@ Resources:
       Protocol: "6"
       RuleAction: allow
       Egress: 'true'
-      CidrBlock: !FindInMap
-        - SubnetConfig
-        - VPC
-        - CIDR
+      CidrBlock: 0.0.0.0/0
       PortRange:
-        From: 0
-        To: 65535
+        From: 80
+        To: 80
 
-  myoutPrivateNetworkAclEntryEphemeralPorts2s3a:
+  myoutPrivateNetworkAclEntryEphemeralPorts:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -434,14 +411,14 @@ Resources:
       RuleAction: allow
       Egress: 'true'
       CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3a
+        - SubnetConfig
+        - VPC
         - CIDR
       PortRange:
         From: 0
         To: 65535
 
-  myoutPrivateNetworkAclEntryEphemeralPorts2s3b:
+  myoutPrivateNetworkAclEntry443:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId:
@@ -450,49 +427,12 @@ Resources:
       Protocol: "6"
       RuleAction: allow
       Egress: 'true'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3b
-        - CIDR
+      CidrBlock: 0.0.0.0/0
       PortRange:
-        From: 0
-        To: 65535
+        From: 443
+        To: 443             
 
-  myoutPrivateNetworkAclEntryEphemeralPorts2s3c:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId:
-        Ref: myPrivateNetworkAcl
-      RuleNumber: '103'
-      Protocol: "6"
-      RuleAction: allow
-      Egress: 'true'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3c
-        - CIDR
-      PortRange:
-        From: 0
-        To: 65535
-
-  myoutPrivateNetworkAclEntryEphemeralPorts2s3d:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId:
-        Ref: myPrivateNetworkAcl
-      RuleNumber: '104'
-      Protocol: "6"
-      RuleAction: allow
-      Egress: 'true'
-      CidrBlock: !FindInMap
-        - EndpointConfig
-        - amazonawstos3d
-        - CIDR
-      PortRange:
-        From: 0
-        To: 65535             
-
-  PublicSecurityGroup:
+  myPublicSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable SSH/HTTP/HTTPS access
@@ -523,7 +463,9 @@ Resources:
       Tags:
       - Key: name
         Value: myPipeline 
-
+# Check the policy, ${AWS::Region} has to be replaced by us-east-1
+# Also the private SG has to point to the prefix list ID for the S3 endpoint for this VPC
+# "Default": "pl-xxxxxx"
   myPrivateSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -538,55 +480,38 @@ Resources:
         CidrIp: !FindInMap
         - SubnetConfig
         - VPC
-        - CIDR
-      - IpProtocol: tcp
-        FromPort: 0
-        ToPort: 65535
-        CidrIp: !FindInMap
-        - EndpointConfig
-        - amazonawstos3a
-        - CIDR
-      - IpProtocol: tcp
-        FromPort: 0
-        ToPort: 65535
-        CidrIp: !FindInMap
-        - EndpointConfig
-        - amazonawstos3b
-        - CIDR
-      - IpProtocol: tcp
-        FromPort: 0
-        ToPort: 65535
-        CidrIp: !FindInMap
-        - EndpointConfig
-        - amazonawstos3c
-        - CIDR
-      - IpProtocol: tcp
-        FromPort: 0
-        ToPort: 65535
-        CidrIp: !FindInMap
-        - EndpointConfig
-        - amazonawstos3d
-        - CIDR        
+        - CIDR  
       Tags:
       - Key: name
-        Value: myPipeline   
+        Value: myPipeline 
+
+  myNATSecurityGroupIngress80:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId:
+        Ref: myPrivateSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !GetAtt myPublicSecurityGroup.GroupId 
+
+  myNATSecurityGroupIngress443:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId:
+        Ref: myPrivateSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt myPublicSecurityGroup.GroupId  
 
   PublicEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
       UserData:
-        Fn::Base64:
-          Fn::Join:
-          - ""
-          - - "#!/bin/bash\n"
-            - "yum update -y aws-cfn-bootstrap"
-            - "/opt/aws/bin/cfn-init"
-            - " --stack "
-            - Ref: AWS::StackName
-            - " --resource PublicEC2Instance "
-            - " --region "
-            - Ref: AWS::Region
-            - "\n"
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
       InstanceType:
         Ref: InstanceType
       KeyName:
@@ -603,7 +528,7 @@ Resources:
       - AssociatePublicIpAddress: "true"
         DeviceIndex: "0"
         GroupSet: 
-          - Ref: "PublicSecurityGroup"
+          - Ref: "myPublicSecurityGroup"
         SubnetId: 
           Ref: "myPublicSubnet"
       Tags:
@@ -622,30 +547,17 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       UserData:
-        Fn::Base64:
-          Fn::Join:
-          - ""
-          - - "#!/bin/bash\n"
-            - "yum update -y aws-cfn-bootstrap"
-            - "/opt/aws/bin/cfn-init"
-            - " --stack "
-            - "useradd -c ansible -d /home/ansible -s /bin/bash ansible"
-            - "passwd -d ansible"
-            - "usermod -aG wheel ansible"
-            - "su - ansible"
-            - "yum install -y epel-release"
-            - "yum install -y ansible"
-            - "yum install -y python36 python36-pip"
-            - "yum install -y git"
-            - "mkdir -p /opt/ansible/inventory"
-            - "chmod -R 755 /opt/ansible"
-            - "chown -R ansible:ansible /opt/ansible"
-            - "git clone https://github.com/ansible/ansible"
-            - Ref: AWS::StackName
-            - " --resource AnsibleEC2Instance "
-            - " --region "
-            - Ref: AWS::Region
-            - "\n"
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+          yum install -y epel-release-latest-7.noarch.rpm
+          yum update -y
+          yum — enablerepo=epel install ansible
+          yum install -y python36 python36-pip python python-devel python-pip openssl
+          yum install -y ansible
+          yum install -y git
+          git clone https://github.com/ansible/ansible
       IamInstanceProfile:
         Ref: MyPrivateInstanceProfile    
       InstanceType:
