@@ -35,7 +35,7 @@ Parameters:
     Type: String
     MinLength: 9
     MaxLength: 18
-    Default: "0.0.0.0/0"
+    Default: "99.241.167.11/32"
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     ConstraintDescription: "Must be a valid IP CIDR range of the form x.x.x.x/x."
 
@@ -78,7 +78,6 @@ Resources:
       GroupName: !Sub '${pEnvironment}_Admin_${AWS::Region}_${AWS::AccountId}'
       ManagedPolicyArns:  
         - arn:aws:iam::aws:policy/AdministratorAccess
-        
 # The below role will be linked to the MyPrivateInstanceProfile   
   PowerUserIAmRole:
     Type: AWS::IAM::Role
@@ -511,7 +510,8 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum update -y
+          sleep 40
+          yum update -y > /tmp/1-yum.txt
       InstanceType:
         Ref: InstanceType
       KeyName:
@@ -534,7 +534,7 @@ Resources:
       Tags:
       - Key: name
         Value: myPipeline
-
+# Below MyPrivateInstanceProfile allows you to set the PowerUserIAmRole to the server
   MyPrivateInstanceProfile: 
     Type: "AWS::IAM::InstanceProfile"
     Properties: 
@@ -549,15 +549,41 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum update -y
-          wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-          yum install -y epel-release-latest-7.noarch.rpm
-          yum update -y
-          yum — enablerepo=epel install ansible
-          yum install -y python36 python36-pip python python-devel python-pip openssl
-          yum install -y ansible
-          yum install -y git
-          git clone https://github.com/ansible/ansible
+          sleep 30
+          yum update -y > /tmp/1-yum.txt
+          adduser -c ansible -p ansible -d /home/ansible -s /bin/bash ansible
+          usermod -aG wheel ansible
+          chmod u+w /etc/sudoers
+          sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\+NOPASSWD:\s\+ALL\)/\1/' /etc/sudoers
+          sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\)/\1/' /etc/sudoers
+          chmod u-w /etc/sudoers
+          su - ansible
+          yum install -y python > /tmp/2-python.txt
+          yum install -y python-pip > /tmp/3-python-pip.txt
+          yum install -y python-devel > /tmp/4-python-devel.txt
+          yum install -y PyYAML > /tmp/5-PyYAML.txt
+          yum install -y python-jinja2 > /tmp/6-python-jinja2.txt
+          yum install -y python-httplib2 > /tmp/7-python-httplib2.txt
+          yum install -y libffi-devel > /tmp/8-libffi-devel.txt
+          yum install -y python-paramiko > /tmp/9-python-paramiko.txt
+          yum install -y MySQL-python > /tmp/10-MySQL-python.txt
+          yum install -y python36 > /tmp/11-python36.txt
+          yum install -y openssl > /tmp/12-openssl.txt
+          yum install -y openssl-devel > /tmp/13-openssl-devel.txt
+          pip install --upgrade pip > /tmp/14-upgrade-pip.txt
+          yum install -y epel-release > /tmp/15-epel-release.txt
+          yum update -y > /tmp/16-yum.txt
+          sleep 10
+          pip install ansible > /tmp/17-ansible.txt
+          sleep 10
+          yum install -y git > /tmp/18-git.txt
+          mkdir -p /opt/ansible/inventory
+          chmod -R 755 /opt/ansible
+          chown -R ansible:ansible /opt/ansible
+          chown -R ansible:ansible /etc/ansible
+          cd /home/ansible/
+          git clone https://github.com/ansible/ansible > /tmp/19-gitclone.txt
+          chown -R ansible:ansible /ansible/*
       IamInstanceProfile:
         Ref: MyPrivateInstanceProfile    
       InstanceType:
