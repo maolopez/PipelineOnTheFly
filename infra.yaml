@@ -541,6 +541,7 @@ Resources:
           yum install jenkins -y > /tmp/4-installjenkins.txt
           service jenkins start
           chkconfig jenkins on
+          yum install -y httpd-tools > /tmp/5-ab.txt
       InstanceType:
         Ref: InstanceType
       KeyName:
