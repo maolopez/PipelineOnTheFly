@@ -594,7 +594,6 @@ Resources:
           sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\+NOPASSWD:\s\+ALL\)/\1/' /etc/sudoers
           sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\)/\1/' /etc/sudoers
           chmod u-w /etc/sudoers
-          su - salt
           curl -L https://bootstrap.saltstack.com -o bootstrap-salt.sh
           sh bootstrap-salt.sh -P -M
           sudo sed -i 's/127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4/127.0.0.1   salt localhost localhost.localdomain localhost4 localhost4.localdomain4/' /etc/hosts
@@ -609,13 +608,18 @@ Resources:
           chown -R salt:salt /var/log/salt/*
           chown -R salt:salt /etc/salt/pki
           chown -R salt:salt /etc/salt/pki/*
+          chown -R salt:salt /usr/bin
+          chown -R salt:salt /usr/bin/salt*
           cd /home/salt/
           service salt-master start
           chkconfig salt-master on
-          sudo iptables -I INPUT 1 -p tcp --dport 4505 -j ACCEPT
-          sudo iptables -I INPUT 1 -p tcp --dport 4506 -j ACCEPT
+          iptables -I INPUT 1 -p tcp --dport 4505 -j ACCEPT
+          iptables -I INPUT 1 -p tcp --dport 4506 -j ACCEPT
           service iptables save
           service salt-master restart
+          TARGETm=`hostname -f`
+          salt-key --accept=${TARGETm} --yes
+          salt-key --accept-all
       IamInstanceProfile:
         Ref: MyPrivateInstanceProfile    
       InstanceType:
@@ -655,7 +659,6 @@ Resources:
           sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\+NOPASSWD:\s\+ALL\)/\1/' /etc/sudoers
           sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\)/\1/' /etc/sudoers
           chmod u-w /etc/sudoers
-          su - salt
           curl -L https://bootstrap.saltstack.com -o bootstrap-salt.sh
           sh bootstrap-salt.sh -P
           yum update -y > /tmp/2-yum.txt
@@ -669,13 +672,15 @@ Resources:
           chown -R salt:salt /var/log/salt/*
           chown -R salt:salt /etc/salt/pki
           chown -R salt:salt /etc/salt/pki/*
+          chown -R salt:salt /usr/bin
+          chown -R salt:salt /usr/bin/salt*
           cd /home/salt/
           service salt-minion start
           chkconfig salt-minion on
-          sudo iptables -I INPUT 1 -p tcp --dport 4505 -j ACCEPT
-          sudo iptables -I INPUT 1 -p tcp --dport 4506 -j ACCEPT
-          cd /etc/salt
-          rm -f minion_id
+          iptables -I INPUT 1 -p tcp --dport 4505 -j ACCEPT
+          iptables -I INPUT 1 -p tcp --dport 4506 -j ACCEPT
+          #cd /etc/salt
+          #rm -f minion_id
           service iptables save
           service salt-minion restart
       IamInstanceProfile:
