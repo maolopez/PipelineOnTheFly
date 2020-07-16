@@ -17,7 +17,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: "Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs, 2 security groups
-and 2 instances, one of the instances in the private subnet will connecto to a NAT.
+and 2 instances, one of the instances in the private subnet will connecto to a NAT and it is an Ansible instance.
 This template is created for the us-east-1 AZ. The private Instance contact yum repositories through NAT"
 # To create/add te SSH key before running this cloudformation template.
 Parameters:

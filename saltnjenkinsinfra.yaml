@@ -17,7 +17,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: "Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs, 2 security groups
-and 2 instances, one of the instances in the private subnet will connecto to a NAT.
+and 3 instances, two of the instances in the private subnet will connecto to a NAT and are a SAL Master and Minion.
 This template is created for the us-east-1 AZ. The private Instance contact yum repositories through NAT"
 # To create/add te SSH key before running this cloudformation template.
 Parameters:
@@ -586,7 +586,6 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          sleep 30
           yum update -y > /tmp/1-yum.txt
           adduser -c salt -p salt -d /home/salt -s /bin/bash salt
           usermod -aG wheel salt
@@ -599,26 +598,13 @@ Resources:
           sudo sed -i 's/127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4/127.0.0.1   salt localhost localhost.localdomain localhost4 localhost4.localdomain4/' /etc/hosts
           yum update -y > /tmp/2-yum.txt
           yum install -y git > /tmp/3-git.txt
-          mkdir -p /opt/salt/inventory
-          chmod -R 755 /opt/salt
-          chown -R salt:salt /opt/salt
-          chown -R salt:salt /etc/salt
-          chown -R salt:salt /etc/salt/*
-          chown -R salt:salt /var/log/salt
-          chown -R salt:salt /var/log/salt/*
-          chown -R salt:salt /etc/salt/pki
-          chown -R salt:salt /etc/salt/pki/*
-          chown -R salt:salt /usr/bin
-          chown -R salt:salt /usr/bin/salt*
-          cd /home/salt/
           service salt-master start
           chkconfig salt-master on
           iptables -I INPUT 1 -p tcp --dport 4505 -j ACCEPT
           iptables -I INPUT 1 -p tcp --dport 4506 -j ACCEPT
           service iptables save
           service salt-master restart
-          TARGETm=`hostname -f`
-          salt-key --accept=${TARGETm} --yes
+          salt-key --accept=`hostname -f` --yes
           salt-key --accept-all
       IamInstanceProfile:
         Ref: MyPrivateInstanceProfile    
@@ -651,7 +637,7 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          sleep 30
+          sleep 40
           yum update -y > /tmp/1-yum.txt
           adduser -c salt -p salt -d /home/salt -s /bin/bash salt
           usermod -aG wheel salt
@@ -663,18 +649,6 @@ Resources:
           sh bootstrap-salt.sh -P
           yum update -y > /tmp/2-yum.txt
           yum install -y git > /tmp/3-git.txt
-          mkdir -p /opt/salt/inventory
-          chmod -R 755 /opt/salt
-          chown -R salt:salt /opt/salt
-          chown -R salt:salt /etc/salt
-          chown -R salt:salt /etc/salt/*
-          chown -R salt:salt /var/log/salt
-          chown -R salt:salt /var/log/salt/*
-          chown -R salt:salt /etc/salt/pki
-          chown -R salt:salt /etc/salt/pki/*
-          chown -R salt:salt /usr/bin
-          chown -R salt:salt /usr/bin/salt*
-          cd /home/salt/
           service salt-minion start
           chkconfig salt-minion on
           iptables -I INPUT 1 -p tcp --dport 4505 -j ACCEPT
