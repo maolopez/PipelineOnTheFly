@@ -549,6 +549,13 @@ Resources:
           service jenkins start
           chkconfig jenkins on
           yum install -y httpd-tools > /tmp/5-ab.txt
+          yum -y install docker
+          systemctl start docker
+          systemctl enable docker
+          groupadd docker
+          usermod -aG docker jenkins
+          systemctl restart jenkins
+          systemctl restart docker
       InstanceType:
         Ref: InstanceType
       KeyName:
