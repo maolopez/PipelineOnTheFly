@@ -556,6 +556,9 @@ Resources:
           usermod -aG docker jenkins
           yum install git -y > /tmp/7-git.txt
           yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
+          yum install python37
+          curl -O https://bootstrap.pypa.io/get-pip.py
+          python3 get-pip.py --user
           systemctl restart jenkins
           systemctl restart docker
       InstanceType:
