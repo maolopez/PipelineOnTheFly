@@ -542,11 +542,13 @@ Resources:
           service jenkins start
           chkconfig jenkins on
           yum install -y httpd-tools > /tmp/5-ab.txt
-          yum -y install docker
-          systemctl start docker
-          systemctl enable docker
+          yum install docker -y > /tmp/6-docker.txt
+          service docker enable
+          service docker start
           groupadd docker
           usermod -aG docker jenkins
+          yum install git -y > /tmp/7-git.txt
+          yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
           systemctl restart jenkins
           systemctl restart docker
       InstanceType:

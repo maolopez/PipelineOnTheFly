@@ -1,17 +1,19 @@
 PipelineOn The Fly
 ==================
 
-You have to finish the Jenkins server configuration manually.
+You have to finish the Jenkins server configuration manually: Install plugins.
 
 
-Usage
------
+|*CloudFormation template*                  |*Description*                                 |*Usage*             |
+| ------------------------------------------|:--------------------------------------------:|:-------------------|
+|ansible-jenkins-infra.yaml                 |Jenkis/Public, Ansible/Private, server/subnet |AWS CloudFormation  |
+|saltnjenkinsinfra.yaml                     |Jenkis/Public, Salt/Private, servers/subnet   |AWS CloudFormation  | 
+|                                           |                                              |                    |
 
-In Construction 
 
 
-Steps for the pipeline with Salt Master and Minion
-----------------------------------------------------
+Steps for the infrastructure with Salt Master and Minion
+--------------------------------------------------------
 
 1. The Jenkins server works as a bastion host. Copy your SSH pair keys in order to access the 
    instances in the private subnet.
@@ -20,7 +22,8 @@ Steps for the pipeline with Salt Master and Minion
 4. You will recognize the Sal Master because /etc/hosts -> 127.0.0.1 salt.
 5. In the salt-master accept the keys
 
-Steps
-----------------------------------------------------
+Steps for the infrastructure with Ansible server
+------------------------------------------------
 
-1. 
+1. The Jenkins server works as a bastion host. Copy your SSH pair keys in order to access the 
+   instances in the private subnet. 
