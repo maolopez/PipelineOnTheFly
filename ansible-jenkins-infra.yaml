@@ -1,0 +1,665 @@
+---
+# Copyright 2019
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "Create Admin Group, VPC, Internet Gateway, 2 subnets, 2 Route Tables, 2 NACLs, 2 security groups
+and 2 instances, one of the instances in the private subnet will connecto to a NAT and it is an Ansible instance.
+This template is created for the us-east-1 AZ. The private Instance contact yum repositories through NAT"
+# To create/add te SSH key before running this cloudformation template.
+Parameters:
+
+  pEnvironment:
+    Description: Environment
+    Type: String
+    AllowedPattern: "^[a-zA-Z0-9-]+$"
+  KeyName:
+    Description: "Name of an existing EC2 KeyPair to enable SSH access to the instances"
+    Type: "AWS::EC2::KeyPair::KeyName"
+    ConstraintDescription: "must be the name of an existing EC2 KeyPair."
+  SSHLocation:
+    Description: "The IP address range that can SSH to the EC2 instance."
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: "0.0.0.0/0"
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: "Must be a valid IP CIDR range of the form x.x.x.x/x."
+  Uniquename4s3bucket:
+    Description: Environment
+    Type: String
+    AllowedPattern: "^[a-zA-Z0-9-]+$"
+
+  InstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+    - t1.micro
+    - t2.nano
+    - t2.micro
+    ConstraintDescription: must be a valid EC2 Free Tier instance type.
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    Public:
+      CIDR: 10.0.0.0/24
+    Private:
+      CIDR: 10.0.1.0/24
+#
+  AWSInstanceType2Arch:
+    t1.micro:
+      Arch: HVM64
+    t2.nano:
+      Arch: HVM64
+    t2.micro:
+      Arch: HVM64
+
+  AWSRegionArch2AMI:
+    us-east-1:
+      HVM64: ami-01d025118d8e760db      
+
+Resources:
+
+  AdminIAMGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub '${pEnvironment}_Admin_${AWS::Region}_${AWS::AccountId}'
+      ManagedPolicyArns:  
+        - arn:aws:iam::aws:policy/AdministratorAccess
+# The below role will be linked to the MyPrivateInstanceProfile   
+  PowerUserIAmRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Role for Ansible server
+      RoleName: !Sub '${pEnvironment}_PowerRole_${AWS::Region}_${AWS::AccountId}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - 'ec2.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: /service-role/
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: default
+      Tags:
+       - Key: name
+         Value: myPipeline
+
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: myVPC
+      InternetGatewayId:
+        Ref: myInternetGateway
+
+  myPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - Public
+        - CIDR
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  myPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - Private
+        - CIDR
+      Tags:
+      - Key: name
+        Value: myPipeline          
+
+  myPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:  
+        Ref: myVPC
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  myPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+       RouteTableId:
+         Ref: myPublicRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId:
+         Ref: myInternetGateway
+
+  myPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: myPublicSubnet
+      RouteTableId:
+        Ref: myPublicRouteTable         
+
+  myPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:  
+        Ref: myVPC
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  myPrivateRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+       RouteTableId:
+         Ref: myPrivateRouteTable
+       DestinationCidrBlock: "0.0.0.0/0"
+       NatGatewayId:
+         Ref: myNatGateway
+     
+  myPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: myPrivateSubnet
+      RouteTableId:
+        Ref: myPrivateRouteTable
+
+  myNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - myEIP
+        - AllocationId
+      SubnetId:
+        Ref: myPublicSubnet
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  myEIP:
+    DependsOn: AttachGateway
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: myVPC            
+
+  myPublicNetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+      - Key: name
+        Value: myPipeline
+  
+  myPublicSubnetNetworkAclAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties: 
+      NetworkAclId: !Ref myPublicNetworkAcl
+      SubnetId: !Ref myPublicSubnet
+
+  myInPublicNetworkAclEntry80:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 80
+        To: 80
+
+  myInPublicNetworkAclEntry443:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '101'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443      
+
+  myInPublicNetworkAclEntry22:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '102'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 22
+        To: 22
+
+  myInPublicNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '103'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 1024
+        To: 65535
+
+  myInPublicNetworkAclEntry4jenkins:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '104'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 8080
+        To: 8081        
+
+  myoutPublicNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 0
+        To: 65535        
+
+  myPrivateNetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+      - Key: name
+        Value: myPipeline               
+
+  myPrivateSubnetNetworkAclAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties: 
+      NetworkAclId: !Ref myPrivateNetworkAcl
+      SubnetId: !Ref myPrivateSubnet
+
+  myInPrivateNetworkAclEntry22:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '100'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      PortRange:
+        From: 22
+        To: 22
+
+  myInPrivateNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '101'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 1024
+        To: 65535
+
+# This NACL Inbound rule below allows yum updates for private instances
+
+  myInPrivateNetworkAclEntry80:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '102'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 80
+        To: 80
+
+  myInPrivateNetworkAclEntry443:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '103'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443 
+
+  myoutPrivateNetworkAclEntry80:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '100'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 80
+        To: 80
+
+  myoutPrivateNetworkAclEntryEphemeralPorts:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '101'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      PortRange:
+        From: 0
+        To: 65535
+
+  myoutPrivateNetworkAclEntry443:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: myPrivateNetworkAcl
+      RuleNumber: '102'
+      Protocol: "6"
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443             
+
+  myPublicSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH/HTTP/HTTPS access
+      GroupName: !Sub '${pEnvironment}_PublicInstance_${AWS::Region}_${AWS::AccountId}'
+      VpcId:
+        Ref: myVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp:
+          Ref: SSHLocation
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8081
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: name
+        Value: myPipeline 
+# Check the policy, ${AWS::Region} has to be replaced by us-east-1
+# Also the private SG has to point to the prefix list ID for the S3 endpoint for this VPC
+# "Default": "pl-xxxxxx"
+  myPrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH/HTTP/HTTPS access
+      GroupName: !Sub '${pEnvironment}_PrivateInstance_${AWS::Region}_${AWS::AccountId}'
+      VpcId:
+        Ref: myVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR  
+      Tags:
+      - Key: name
+        Value: myPipeline 
+
+  myNATSecurityGroupIngress80:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId:
+        Ref: myPrivateSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !GetAtt myPublicSecurityGroup.GroupId 
+
+  myNATSecurityGroupIngress443:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId:
+        Ref: myPrivateSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt myPublicSecurityGroup.GroupId  
+
+  PublicEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sleep 40
+          yum remove -y java-1.7.0-openjdk > /tmp/1-removejava.txt
+          yum install -y java-1.8.0 > /tmp/2-installjava.txt
+          yum update -y > /tmp/3-yum.txt
+          wget -O /etc/yum.repos.d/jenkins.repo http://pkg.jenkins-ci.org/redhat/jenkins.repo
+          sudo rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
+          yum install jenkins -y > /tmp/4-installjenkins.txt
+          service jenkins start
+          chkconfig jenkins on
+          yum install -y httpd-tools > /tmp/5-ab.txt
+          yum install docker -y > /tmp/6-docker.txt
+          service docker enable
+          service docker start
+          groupadd docker
+          usermod -aG docker jenkins
+          yum install git -y > /tmp/7-git.txt
+          yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
+          systemctl restart jenkins
+          systemctl restart docker
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionArch2AMI
+        - Ref: AWS::Region
+        - Fn::FindInMap:
+          - AWSInstanceType2Arch
+          - Ref: InstanceType
+          - Arch
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "true"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: "myPublicSecurityGroup"
+        SubnetId: 
+          Ref: "myPublicSubnet"
+      Tags:
+      - Key: name
+        Value: myPipeline
+# Below MyPrivateInstanceProfile allows you to set the PowerUserIAmRole to the server
+  MyPrivateInstanceProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - 
+          Ref: PowerUserIAmRole 
+
+  PrivateEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sleep 30
+          yum update -y > /tmp/1-yum.txt
+          adduser -c ansible -p ansible -d /home/ansible -s /bin/bash ansible
+          usermod -aG wheel ansible
+          chmod u+w /etc/sudoers
+          sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\+NOPASSWD:\s\+ALL\)/\1/' /etc/sudoers
+          sed --in-place 's/^#\s*\(%wheel\s\+ALL=(ALL)\s\)/\1/' /etc/sudoers
+          chmod u-w /etc/sudoers
+          su - ansible
+          yum install -y python > /tmp/2-python.txt
+          yum install -y python-pip > /tmp/3-python-pip.txt
+          yum install -y python-devel > /tmp/4-python-devel.txt
+          yum install -y PyYAML > /tmp/5-PyYAML.txt
+          yum install -y python-jinja2 > /tmp/6-python-jinja2.txt
+          yum install -y python-httplib2 > /tmp/7-python-httplib2.txt
+          yum install -y libffi-devel > /tmp/8-libffi-devel.txt
+          yum install -y python-paramiko > /tmp/9-python-paramiko.txt
+          yum install -y MySQL-python > /tmp/10-MySQL-python.txt
+          yum install -y python36 > /tmp/11-python36.txt
+          yum install -y openssl > /tmp/12-openssl.txt
+          yum install -y openssl-devel > /tmp/13-openssl-devel.txt
+          pip install --upgrade pip > /tmp/14-upgrade-pip.txt
+          yum install -y epel-release > /tmp/15-epel-release.txt
+          yum update -y > /tmp/16-yum.txt
+          sleep 10
+          pip install ansible > /tmp/17-ansible.txt
+          sleep 10
+          yum install -y git > /tmp/18-git.txt
+          mkdir -p /opt/ansible/inventory
+          chmod -R 755 /opt/ansible
+          chown -R ansible:ansible /opt/ansible
+          chown -R ansible:ansible /etc/ansible
+          cd /home/ansible/
+          git clone https://github.com/ansible/ansible > /tmp/19-gitclone.txt
+          chown -R ansible:ansible /ansible/*
+      IamInstanceProfile:
+        Ref: MyPrivateInstanceProfile    
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionArch2AMI
+        - Ref: AWS::Region
+        - Fn::FindInMap:
+          - AWSInstanceType2Arch
+          - Ref: InstanceType
+          - Arch
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "false"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: "myPrivateSecurityGroup"
+        SubnetId: 
+          Ref: "myPrivateSubnet"
+      Tags:
+      - Key: name
+        Value: myPipeline
+
+  S3Bucket4Canary:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private 
+      BucketName: !Sub '${Uniquename4s3bucket}${pEnvironment}${AWS::Region}${AWS::AccountId}'
+      Tags: 
+        - Key: name
+          Value: canary
+
+Outputs:
+  BucketName:
+    Description: Bucket Name of the newly created bucket
+    Value:
+      Ref: S3Bucket4Canary                         
