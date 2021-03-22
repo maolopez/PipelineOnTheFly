@@ -8,7 +8,7 @@ You have to finish the Jenkins server configuration manually: Install plugins.
 | ------------------------------------------|:--------------------------------------------:|:-------------------|
 |ansible-jenkins-infra.yaml                 |Jenkis/Public, Ansible/Private, server/subnet |AWS CloudFormation  |
 |saltnjenkinsinfra.yaml                     |Jenkis/Public, Salt/Private, servers/subnet   |AWS CloudFormation  | 
-|                                           |                                              |                    |
+|infra-4-ut-anagramma.yaml                  |Jenkis/Public + 2 instances/Public            |AWS CloudFormation  |
 
 
 
@@ -27,3 +27,11 @@ Steps for the infrastructure with Ansible server
 
 1. The Jenkins server works as a bastion host. Copy your SSH pair keys in order to access the 
    instances in the private subnet. 
+
+Steps for the infrastructure for Ut-Anagramma demo
+--------------------------------------------------
+
+1. The Jenkins server and a server for Dev and a server for Prod.
+
+see: https://github.com/maolopez/ut_anagramma
+
