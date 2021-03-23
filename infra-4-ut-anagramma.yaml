@@ -302,27 +302,7 @@ Resources:
         CidrIp: 0.0.0.0/0
       Tags:
       - Key: name
-        Value: myPipeline 
-
-  myNATSecurityGroupIngress80:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Properties:
-      GroupId:
-        Ref: myPrivateSecurityGroup
-      IpProtocol: tcp
-      FromPort: 80
-      ToPort: 80
-      SourceSecurityGroupId: !GetAtt myPublicSecurityGroup.GroupId 
-
-  myNATSecurityGroupIngress443:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Properties:
-      GroupId:
-        Ref: myPrivateSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      SourceSecurityGroupId: !GetAtt myPublicSecurityGroup.GroupId  
+        Value: myPipeline  
 
   PublicEC2Instance:
     Type: AWS::EC2::Instance
@@ -373,9 +353,9 @@ Resources:
           Ref: "myPublicSubnet"
       Tags:
       - Key: name
-        Value: myPipeline
+        Value: Jenkins
 
-PublicEC2InstanceDev:
+  PublicEC2InstanceDev:
     Type: AWS::EC2::Instance
     Properties:
       UserData:
@@ -409,9 +389,9 @@ PublicEC2InstanceDev:
           Ref: "myPublicSubnet"
       Tags:
       - Key: name
-        Value: myPipeline
+        Value: Dev
 
-PublicEC2InstanceProd:
+  PublicEC2InstanceProd:
     Type: AWS::EC2::Instance
     Properties:
       UserData:
@@ -445,7 +425,7 @@ PublicEC2InstanceProd:
           Ref: "myPublicSubnet"
       Tags:
       - Key: name
-        Value: myPipeline
+        Value: Prod
 
 
   S3Bucket4Canary:
