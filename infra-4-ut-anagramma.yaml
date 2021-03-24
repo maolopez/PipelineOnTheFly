@@ -69,7 +69,7 @@ Mappings:
 
   AWSRegionArch2AMI:
     us-east-1:
-      HVM64: ami-01d025118d8e760db      
+      HVM64: ami-096fda3c22c1c990a      
 
 Resources:
 
@@ -294,7 +294,7 @@ Resources:
         CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 8080
-        ToPort: 8081
+        ToPort: 8082
         CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 443
@@ -323,15 +323,20 @@ Resources:
           yum install docker -y > /tmp/6-docker.txt
           service docker enable
           service docker start
-          groupadd docker
-          usermod -aG docker jenkins
+          groupadd docker -g 496
+          usermod -aG docker,ec2-user jenkins
+          newgrp docker
+          usermod -aG docker ec2-user
+          newgrp docker
           yum install git -y > /tmp/7-git.txt
           yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
           yum install python37
           curl -O https://bootstrap.pypa.io/get-pip.py
           python3 get-pip.py --user
-          systemctl restart jenkins
-          systemctl restart docker
+          service jenkins stop
+          service jenkins start
+          service docker stop
+          service docker start
       InstanceType:
         Ref: InstanceType
       KeyName:
@@ -361,13 +366,15 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum install docker -y > /tmp/6-docker.txt
+          yum install docker -y > /tmp/6-docker.txt         
           service docker enable
           service docker start
-          groupadd docker
-          usermod -aG docker jenkins
+          groupadd docker -g 496
+          usermod -aG docker ec2-user
+          newgrp docker          
           yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
-          systemctl restart docker
+          service docker stop
+          service docker start
       InstanceType:
         Ref: InstanceType
       KeyName:
@@ -397,13 +404,15 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum install docker -y > /tmp/6-docker.txt
+          yum install docker -y > /tmp/6-docker.txt         
           service docker enable
           service docker start
-          groupadd docker
-          usermod -aG docker jenkins
+          groupadd docker -g 496
+          usermod -aG docker ec2-user 
+          newgrp docker         
           yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
-          systemctl restart docker
+          service docker stop
+          service docker start
       InstanceType:
         Ref: InstanceType
       KeyName:
