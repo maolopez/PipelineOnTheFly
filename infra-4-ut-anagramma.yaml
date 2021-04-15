@@ -41,6 +41,10 @@ Parameters:
     Description: Environment
     Type: String
     AllowedPattern: "^[a-zA-Z0-9-]+$"
+  pEmailEndpoint:
+    Description: Service name
+    Type: String
+    AllowedPattern: "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
 
   InstanceType:
     Description: WebServer EC2 instance type
@@ -437,7 +441,6 @@ Resources:
       - Key: name
         Value: Prod
 
-
   S3Bucket4Canary:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -447,6 +450,36 @@ Resources:
       Tags: 
         - Key: name
           Value: canary
+
+  SnSAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${pEnvironment}${AWS::Region}${AWS::AccountId}-topic
+
+  SnSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Sub ${pEmailEndpoint}
+      Protocol: "email"
+      TopicArn: !Ref 'SnSAlarmTopic'
+
+  CPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPU alarm for my instance
+      AlarmActions:
+      - Ref: 'SnSAlarmTopic'
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '50'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value:
+          Ref: 'PublicEC2InstanceProd'
 
 Outputs:
   BucketName:
