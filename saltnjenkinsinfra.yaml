@@ -542,9 +542,10 @@ Resources:
           sleep 40
           yum remove -y java-1.7.0-openjdk > /tmp/1-removejava.txt
           yum install -y java-1.8.0 > /tmp/2-installjava.txt
+          yum install -y deltarpm > /tmp/deltarpm.txt
           yum update -y > /tmp/3-yum.txt
-          wget -O /etc/yum.repos.d/jenkins.repo http://pkg.jenkins-ci.org/redhat/jenkins.repo
-          sudo rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
+          wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat/jenkins.repo
+          rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
           yum install jenkins -y > /tmp/4-installjenkins.txt
           service jenkins start
           chkconfig jenkins on
