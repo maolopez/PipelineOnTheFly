@@ -45,6 +45,11 @@ Parameters:
     Description: Service name
     Type: String
     AllowedPattern: "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+  IAMRole:
+    Description: EC2 attached IAM role
+    Type: String
+    Default: CloudWatchAgentAdminRole
+    ConstraintDescription: must be an existing IAM role which will be attached to EC2 instance.
 
   InstanceType:
     Description: WebServer EC2 instance type
@@ -62,7 +67,7 @@ Mappings:
       CIDR: 10.0.0.0/16
     Public:
       CIDR: 10.0.0.0/24
-#
+      
   AWSInstanceType2Arch:
     t1.micro:
       Arch: HVM64
@@ -317,10 +322,11 @@ Resources:
           sleep 40
           yum remove -y java-1.7.0-openjdk > /tmp/1-removejava.txt
           yum install -y java-1.8.0 > /tmp/2-installjava.txt
+          yum install -y deltarpm > /tmp/deltarpm.txt          
           yum update -y > /tmp/3-yum.txt
           yum install -y wget > /tmp/9-wget.txt
-          wget -O /etc/yum.repos.d/jenkins.repo http://pkg.jenkins-ci.org/redhat/jenkins.repo
-          sudo rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
+          wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat/jenkins.repo
+          rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
           yum install jenkins -y > /tmp/4-installjenkins.txt
           service jenkins start
           chkconfig jenkins on
@@ -371,15 +377,22 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum install docker -y > /tmp/6-docker.txt         
+          yum update -y > /tmp/1-yumudate.txt          
+          yum install docker -y > /tmp/2-docker.txt         
           service docker enable
           service docker start
           groupadd docker -g 496
           usermod -aG docker ec2-user
           newgrp docker          
-          yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
+          yum --enablerepo=epel -y install sshpass > /tmp/3-sshpass.txt
           service docker stop
           service docker start
+          yum install -y httpd > /tmp/4-httpd.txt
+          yum install -y mod_ssl > /tmp/5-ssl.txt 
+          cd /etc/httpd
+          mkdir -p ssl
+          systemctl start httpd
+          systemctl enable httpd         
       InstanceType:
         Ref: InstanceType
       KeyName:
@@ -409,15 +422,22 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum install docker -y > /tmp/6-docker.txt         
+          yum update -y > /tmp/1-yumudate.txt          
+          yum install docker -y > /tmp/2-docker.txt         
           service docker enable
           service docker start
           groupadd docker -g 496
-          usermod -aG docker ec2-user 
-          newgrp docker         
-          yum --enablerepo=epel -y install sshpass > /tmp/8-sshpass.txt
+          usermod -aG docker ec2-user
+          newgrp docker          
+          yum --enablerepo=epel -y install sshpass > /tmp/3-sshpass.txt
           service docker stop
           service docker start
+          yum install -y httpd > /tmp/4-httpd.txt
+          yum install -y mod_ssl > /tmp/5-ssl.txt 
+          cd /etc/httpd
+          mkdir -p ssl
+          systemctl start httpd
+          systemctl enable httpd 
       InstanceType:
         Ref: InstanceType
       KeyName:
