@@ -49,7 +49,7 @@ Parameters:
     Description: EC2 attached IAM role
     Type: String
     Default: CloudWatchAgentAdminRole
-    ConstraintDescription: must be an existing IAM role which will be attached to EC2 instance.  
+    ConstraintDescription: must be an existing IAM role which will be attached to EC2 instance.
 
   InstanceType:
     Description: WebServer EC2 instance type
@@ -67,7 +67,7 @@ Mappings:
       CIDR: 10.0.0.0/16
     Public:
       CIDR: 10.0.0.0/24
-#
+      
   AWSInstanceType2Arch:
     t1.micro:
       Arch: HVM64
